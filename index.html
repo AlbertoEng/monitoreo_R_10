@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Últimos Dígitos de Quote</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f0f0f0;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+    }
+    button {
+      font-size: 20px;
+      padding: 10px 20px;
+      margin: 10px;
+      cursor: pointer;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+    }
+    #output {
+      margin-top: 20px;
+    }
+    .digit-container {
+      margin-bottom: 10px;
+    }
+    .digit {
+      display: inline-block;
+      font-size: 40px;
+      width: 60px;
+      text-align: center;
+      margin-right: 20px;
+    }
+    .count {
+      display: inline-block;
+      font-size: 20px;
+    }
+    .min-digit {
+      font-size: 60px;
+      font-weight: bold;
+      color: #4CAF50; /* Color verde para el dígito con el menor valor */
+      margin-right: 20px;
+    }
+    .min-count {
+      font-size: 30px;
+      font-weight: bold;
+      color: #4CAF50; /* Color verde para el porcentaje del dígito con el menor valor */
+    }
+  </style>
+  <script type="module">
+    import DerivAPIBasic from 'https://cdn.skypack.dev/@deriv/deriv-api/dist/DerivAPIBasic';
+
+    const app_id = 1089; // Replace with your app_id or leave as 1089 for testing.
+    const connection = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=${app_id}`);
+    const api = new DerivAPIBasic({ connection });
+    const tickStream = () => api.subscribe({ ticks: 'R_10' });
+
+    // Array para contar la frecuencia de los últimos dígitos
+    let lastDigitCounts = new Array(10).fill(0);
+    let totalCount = 0;
+    let minDigit = null;
+
+    const tickResponse = async (res) => {
+      const data = JSON.parse(res.data);
+      if (data.error !== undefined) {
+        console.log('Error : ', data.error.message);
+        connection.removeEventListener('message', tickResponse, false);
+        await api.disconnect();
+      }
+      if (data.msg_type === 'tick') {
+        const quote = parseFloat(data.tick.quote).toFixed(3); // Formatear a 3 decimales
+        const lastDigit = parseInt(quote.charAt(quote.length - 1)); // Obtener el último dígito como número entero
+        lastDigitCounts[lastDigit]++; // Incrementar el contador del último dígito correspondiente
+        totalCount++; // Incrementar el contador total de ticks
+        
+        // Actualizar HTML
+        updateHTML();
+      }
+    };
+
+    const subscribeTicks = async () => {
+      await tickStream();
+      connection.addEventListener('message', tickResponse);
+    };
+
+    const unsubscribeTicks = () => {
+      connection.removeEventListener('message', tickResponse, false);
+      tickStream().unsubscribe();
+    };
+
+    const updateHTML = () => {
+      const outputDiv = document.querySelector('#output');
+      outputDiv.innerHTML = ''; // Limpiar contenido anterior
+
+      // Encontrar el dígito con el menor porcentaje
+      let minPercentage = 100;
+      lastDigitCounts.forEach((count, index) => {
+        const percentage = totalCount === 0 ? 0 : (count / totalCount * 100).toFixed(2);
+        
+        if (percentage < minPercentage) {
+          minPercentage = percentage;
+          minDigit = index;
+        }
+
+        const digitContainer = document.createElement('div');
+        digitContainer.classList.add('digit-container');
+
+        const digit = document.createElement('div');
+        digit.classList.add('digit');
+        digit.textContent = index;
+
+        const countElem = document.createElement('div');
+        countElem.classList.add('count');
+        countElem.textContent = `${count} (${percentage}%)`;
+
+        digitContainer.appendChild(digit);
+        digitContainer.appendChild(countElem);
+
+        outputDiv.appendChild(digitContainer);
+      });
+
+      // Encontrar el dígito con el menor valor en el arreglo
+      let minValue = Infinity;
+      lastDigitCounts.forEach((count, index) => {
+        if (count < minValue) {
+          minValue = count;
+          minDigit = index;
+        }
+      });
+
+      // Mostrar el dígito con el menor valor en tamaño grande y verde
+      if (minDigit !== null) {
+        const minDigitElem = document.createElement('div');
+        minDigitElem.classList.add('digit-container');
+
+        const minDigitDiv = document.createElement('div');
+        minDigitDiv.classList.add('min-digit');
+        minDigitDiv.textContent = minDigit;
+
+        const minCountDiv = document.createElement('div');
+        minCountDiv.classList.add('count', 'min-count');
+        minCountDiv.textContent = `(${minValue} veces)`;
+
+        minDigitElem.appendChild(minDigitDiv);
+        minDigitElem.appendChild(minCountDiv);
+
+        outputDiv.insertBefore(minDigitElem, outputDiv.firstChild);
+      }
+    };
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const ticks_button = document.querySelector('#ticks');
+      ticks_button.addEventListener('click', subscribeTicks);
+
+      const unsubscribe_ticks_button = document.querySelector('#ticks-unsubscribe');
+      unsubscribe_ticks_button.addEventListener('click', unsubscribeTicks);
+    });
+  </script>
+</head>
+<body>
+  <h1>Últimos Dígitos de Quote</h1>
+  <button id="ticks">Suscribirse a Ticks</button>
+  <button id="ticks-unsubscribe">Cancelar Suscripción</button>
+  <div id="output">
+    <!-- Aquí se actualizará la salida -->
+  </div>
+</body>
+</html>
